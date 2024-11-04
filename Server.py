@@ -1,16 +1,17 @@
 import toml
 import logging
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory
 from flask_socketio import SocketIO, emit
 import serial
 import threading
 import time
+import os
 
 # 設定ファイルを読み込む
 config = toml.load('config.toml')
 
 # Flaskアプリケーションの初期化
-app = Flask(__name__)
+app = Flask(__name__, static_folder='static')  # 'static' フォルダから静的ファイルを提供
 socketio = SocketIO(app)
 
 # ロギングの設定
@@ -125,6 +126,11 @@ device_manager = DeviceStateManager(
     config['device']['baud_rate'],
     config['device']['timeout']
 )
+
+# Web UIのエンドポイント
+@app.route('/')
+def serve():
+    return send_from_directory(app.static_folder, 'index.html')
 
 @app.route('/api/status', methods=['GET'])
 def get_status():
