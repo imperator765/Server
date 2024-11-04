@@ -32,7 +32,7 @@ class DeviceStateManager:
         """6コマンドでデバイスから現在のステータスを取得し、current_statusを更新する"""
         if not self.ser or not self.ser.is_open:
             logger.error("デバイスに接続されていません")
-            return "device_disconnected"
+            return None
 
         try:
             self.ser.write(b'6')  # 6コマンドでステータス取得要求を送信
@@ -47,20 +47,19 @@ class DeviceStateManager:
                 logger.info("デバイスからの最新ステータスを取得しました: %s", self.current_status)
             else:
                 logger.warning("デバイスが応答しません")
-                return "no_response"
+                return None
         except serial.SerialException as e:
             logger.error("デバイスとの通信エラー: %s", e)
-            return "communication_error"
+            return None
         return self.get_status_dict()
 
     def set_switch_state(self, switch_name, desired_state):
-        # スイッチ名を番号に変換
-        switch_index = list(self.SWITCH_MAPPING.keys()).index(switch_name)
-        if switch_index is None:
+        # スイッチ名をインデックスに変換
+        if switch_name not in self.SWITCH_MAPPING:
             logger.error(f"無効なスイッチ名: {switch_name}")
-            return "invalid_switch"
+            return None
 
-        # 現在のステータスと比較して、変更が必要か確認
+        switch_index = list(self.SWITCH_MAPPING.keys()).index(switch_name)
         current_state = self.current_status[switch_index]
         if current_state == desired_state:
             logger.info(f"スイッチ {switch_name} はすでに指定の状態です: {desired_state}")
@@ -74,72 +73,11 @@ class DeviceStateManager:
             return self.fetch_status_from_device()  # 全スイッチの最新状態を返す
         except serial.SerialTimeoutException:
             logger.error("デバイスが応答しません")
-            return "timeout"
+            return None
         except Exception as e:
             logger.exception("スイッチ操作エラー")
-            return "error"
+            return None
 
     def get_status_dict(self):
-        """現在のスイッチ状態を辞書形式で返す"""
-        return {
-            "Alpha": self.current_status[0],
-            "Blabo": self.current_status[1],
-            "Charlie": self.current_status[2],
-            "Delta": self.current_status[3]
-        }
+        """現在のスイッチ状態を辞書
 
-    def get_current_status(self):
-        # デバイスから最新のステータスを取得して返す
-        return self.fetch_status_from_device()
-
-# FlaskおよびSocket.IOを利用したサーバーの設定とエンドポイントの定義
-app = Flask(__name__)
-socketio = SocketIO(app)
-
-@app.route('/api/status', methods=['GET'])
-def get_status():
-    # デバイスから最新のスイッチの状態を取得
-    return jsonify(device_manager.get_current_status())
-
-@app.route('/api/switch', methods=['POST'])
-def switch_state():
-    # 複数のスイッチをAND条件で設定
-    results = {}
-    for switch_name, desired_state in request.args.items():
-        result = device_manager.set_switch_state(switch_name, int(desired_state))
-        if result in ["timeout", "error", "invalid_switch"]:
-            return jsonify(error=f"スイッチ {switch_name} の操作に失敗しました: {result}"), 500
-        results[switch_name] = result
-
-    # 全ステータスを返すために、最新のステータスを取得して返却
-    return jsonify(device_manager.get_current_status())
-
-@socketio.on('connect')
-def handle_connect():
-    emit('status_update', device_manager.get_current_status())
-
-# メイン関数の定義
-def main():
-    global device_manager, logger
-
-    # 設定ファイルの読み込み
-    config = toml.load('config.toml')
-
-    # ロギングの設定
-    log_level = getattr(logging, config['logging']['log_level'].upper(), logging.INFO)
-    logging.basicConfig(level=log_level, format='%(asctime)s - %(levelname)s - %(message)s')
-    logger = logging.getLogger(__name__)
-
-    # DeviceStateManagerのインスタンス作成
-    device_manager = DeviceStateManager(
-        config['device']['com_port'],
-        config['device']['baud_rate'],
-        config['device']['timeout']
-    )
-
-    # サーバーの起動
-    socketio.run(app, host=config['server']['host'], port=config['server']['port'])
-
-# スクリプトが直接実行されたときだけmain関数を実行
-if __name__ == '__main__':
-    main()
