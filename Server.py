@@ -26,7 +26,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class DeviceStateManager:
-    # スイッチの対応表をクラス変数として定義
+    # スイッチ名とデバイス上の番号を対応付けるマッピング
     switch_map = {
         "Alpha": 2,
         "Bravo": 3,
@@ -35,16 +35,22 @@ class DeviceStateManager:
     }
 
     def __init__(self, com_port, baud_rate, timeout):
-        self.current_status = [0, 0, 0, 0]  # デバイス状態のキャッシュ
+        # デバイス接続とスイッチ状態の初期設定
+        self.current_status = [0, 0, 0, 0]
         self.device_connected = True
         self.com_port = com_port
         self.baud_rate = baud_rate
         self.timeout = timeout
         self.ser = self.connect_to_device()
-        self.lock = threading.Lock()  # ロック機構の初期化
+        self.lock = threading.Lock()
         self.last_update_time = time.time()
 
+        # 初回のデバイス状態取得でキャッシュを最新化
+        if self.device_connected:
+            self.update_status()
+
     def connect_to_device(self):
+        """デバイスに接続し、成功した場合はシリアルオブジェクトを返す"""
         try:
             ser = serial.Serial(self.com_port, self.baud_rate, timeout=self.timeout)
             logger.info("デバイスに接続しました")
@@ -54,7 +60,7 @@ class DeviceStateManager:
             return None
 
     def update_status(self):
-        """ デバイスの現在のステータスを定期的に更新し、変化があれば通知 """
+        """デバイスのステータスを定期的に更新し、状態の変化や接続状況を管理"""
         while True:
             with self.lock:
                 if self.ser and self.ser.is_open:
@@ -62,13 +68,14 @@ class DeviceStateManager:
                         self.ser.write(b'6')  # ステータス取得コマンド
                         response = self.ser.read()
                         if not response:
+                            # デバイスが応答しない場合、接続エラーとして扱い、エラーメッセージを送信
                             if self.device_connected:
                                 self.device_connected = False
                                 socketio.emit('error', {'message': 'デバイスが応答しません'})
                                 logger.warning("デバイスが応答しません")
                             continue
 
-                        # デバイスの状態をビット列から配列形式に変換し、新しい状態を確認
+                        # 取得したデバイスの状態を配列形式で更新し、変化があれば通知
                         new_status = [
                             (response & 0b0001) > 0,
                             (response & 0b0010) > 0,
@@ -76,7 +83,6 @@ class DeviceStateManager:
                             (response & 0b1000) > 0
                         ]
                         
-                        # 状態に変化がある場合のみ通知
                         if new_status != self.current_status:
                             self.current_status = new_status
                             self.last_update_time = time.time()
@@ -84,24 +90,34 @@ class DeviceStateManager:
                             logger.info("ステータスが変更されました: %s", self.current_status)
 
                     except serial.SerialException as e:
+                        # シリアル例外が発生した場合は接続エラーとして扱い、エラーメッセージを送信
                         if self.device_connected:
                             self.device_connected = False
                             socketio.emit('error', {'message': 'COMポート接続エラーが発生しました'})
                             logger.error(f"COMポート接続エラー: {e}")
                 else:
+                    # デバイス未接続の場合は再接続を試み、接続が回復した場合に通知
                     if self.device_connected:
                         self.device_connected = False
                         socketio.emit('error', {'message': 'デバイスとの接続が失われました'})
                         logger.warning("デバイスとの接続が失われました")
 
+                    # 再接続の試行
+                    self.ser = self.connect_to_device()
+                    if self.ser and self.ser.is_open:
+                        self.device_connected = True
+                        socketio.emit('reconnected', {'message': 'デバイスとの接続が再確立されました'})
+                        logger.info("デバイスとの接続が再確立されました")
+
+            # 次回の更新まで待機
             time.sleep(5)
 
     def get_status_dict(self):
-        """ キャッシュされたデバイス状態を辞書形式で取得 """
+        """キャッシュされたデバイス状態を辞書形式で返却"""
         return {name: int(state) for name, state in zip(self.switch_map.keys(), self.current_status)}
 
     def set_switch_state(self, switch_name, desired_state):
-        """スイッチの状態を設定。要求通りの状態に切り替える"""
+        """指定されたスイッチの状態を要求通りに変更"""
         if switch_name not in self.switch_map:
             logger.warning("無効なスイッチ名: %s", switch_name)
             return None
@@ -113,18 +129,14 @@ class DeviceStateManager:
             logger.warning("デバイス未接続で操作が試行されました")
             return None
 
-        # ロック機構を用いて排他制御を行う
+        # ロック機構で排他制御し、状態に変化がある場合のみ操作
         with self.lock:
-            # 要求の状態と異なる場合のみコマンド送信
             if self.current_status[current_index] != desired_state:
                 try:
                     self.ser.write(bytes([switch_number]))
-                    
-                    # 操作が成功した場合、キャッシュを即時更新
                     self.current_status[current_index] = desired_state
                     self.last_update_time = time.time()
                     logger.info(f"スイッチ {switch_name} を {desired_state} に設定し、キャッシュを更新しました")
-                    
                     return self.get_status_dict()
 
                 except serial.SerialTimeoutException:
@@ -149,8 +161,7 @@ def serve():
 
 @app.route('/api/status', methods=['GET'])
 def get_status():
-    """ キャッシュから最新の状態を返却。必要に応じてデバイスにアクセスして即時更新 """
-    # クエリパラメータで update=true が指定された場合にキャッシュを即時更新
+    """キャッシュから最新の状態を返却。オプションでデバイスから即時更新"""
     update = request.args.get('update', 'false').lower() == 'true'
     
     with device_manager.lock:
@@ -166,16 +177,29 @@ def get_status():
 
 @app.route('/api/set_switch', methods=['POST'])
 def set_switch():
-    """ スイッチの状態を設定 """
+    """指定されたスイッチの状態を変更"""
     if not device_manager.ser or not device_manager.ser.is_open:
         logger.warning("COMポート未接続のためスイッチ操作に失敗しました")
         return jsonify(error="COMポート未接続"), 503
 
     responses = {}
     for switch_param in request.args.getlist('switch'):
+        # パラメータのフォーマット検証
+        if ':' not in switch_param:
+            return jsonify(error="無効なパラメータ形式。'スイッチ名:状態'の形式で指定してください。"), 400
+
         name, state = switch_param.split(':')
+        
+        # スイッチ名と状態値の妥当性検証
+        if name not in device_manager.switch_map:
+            return jsonify(error=f"無効なスイッチ名: {name}"), 400
+        if state not in ['0', '1']:
+            return jsonify(error=f"無効な状態値: {state}。0または1を指定してください。"), 400
+
+        # 状態値を整数に変換
         state = int(state)
         result = device_manager.set_switch_state(name, state)
+        
         if result == "timeout":
             return jsonify(error="デバイスが応答しません"), 408
         elif result == "error":
@@ -186,10 +210,11 @@ def set_switch():
 
 @socketio.on('connect')
 def handle_connect():
-    """ クライアント接続時に最新のステータスを送信 """
+    """クライアント接続時に最新のステータスを送信"""
     with device_manager.lock:
         emit('status_update', device_manager.get_status_dict())
 
 if __name__ == '__main__':
     threading.Thread(target=device_manager.update_status).start()
     socketio.run(app, host=config['server']['host'], port=config['server']['port'])
+
