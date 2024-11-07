@@ -1,14 +1,20 @@
 # config.toml
 
-[server]
-host = "0.0.0.0"
-port = 5000
-
 [device]
-com_port = "/dev/ttyUSB0"
-baud_rate = 9600
-timeout = 1
+com_port = "COM1"  # デバイスが接続されているCOMポート
+baud_rate = 9600   # ボーレート
+timeout = 1        # 読み取りタイムアウト（秒）
+write_timeout = 1  # 書き込みタイムアウト（秒）
+min_retry_interval = 10          # 再接続の最小間隔（秒）
+max_retry_interval = 300         # 再接続の最大間隔（秒）
+poll_interval = 5                # デバイス状態のポーリング間隔（秒）
+failure_reset_interval = 600     # エラーカウントのリセット間隔（秒）
+max_failure_threshold = 5        # エラーの最大許容回数
+
+[server]
+host = "0.0.0.0"   # サーバーのホストアドレス
+port = 5000        # サーバーのポート番号
 
 [logging]
-log_level = "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
-log_file = "server.log"
+log_level = "INFO"               # ログのレベル（DEBUG、INFO、WARNING、ERROR、CRITICAL）
+log_file = "app.log"             # ログファイルのパス
