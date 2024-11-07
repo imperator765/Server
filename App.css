@@ -1,52 +1,95 @@
-/* src/App.css */
-
-/* ダークモードとライトモードに共通するスタイル */
-body {
-  margin: 0;
-  font-family: Arial, sans-serif;
-}
-
-/* コンテナ */
 .app {
-  max-width: 600px;
-  margin: 0 auto;
+  text-align: center;
   padding: 20px;
-  border-radius: 12px;
-  box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.3);
+  transition: background-color 0.3s, color 0.3s;
 }
 
-/* ダークモード */
 .dark-mode {
   background-color: #1e1e1e;
-  color: #ffffff;
+  color: #f1f1f1;
 }
 
-.dark-mode .switch-block {
-  background-color: #333333;
-}
-
-.dark-mode .toggle-button {
-  background-color: #ffbe0b;
-}
-
-.dark-mode .error {
-  color: #ff4d4d;
-}
-
-/* ライトモード */
 .light-mode {
-  background-color: #f2f2f2;
-  color: #333333;
+  background-color: #f1f1f1;
+  color: #1e1e1e;
 }
 
-.light-mode .switch-block {
-  background-color: #e0e0e0;
+.header {
+  background-color: transparent;
+  padding: 10px;
+  color: inherit;
 }
 
-.light-mode .toggle-button {
-  background-color: #ffbe0b;
+.theme-toggle {
+  padding: 5px 10px;
+  border: none;
+  cursor: pointer;
+  border-radius: 5px;
+  background-color: #333;
+  color: #f1f1f1;
 }
 
-.light-mode .error {
-  color: #ff4d4d;
+.theme-toggle:hover {
+  background-color: #444;
+}
+
+.error-bar {
+  background-color: #ff4d4d;
+  color: white;
+  padding: 10px;
+  margin-top: 10px;
+}
+
+.controls {
+  display: flex;
+  justify-content: space-around;
+  margin-top: 20px;
+}
+
+.switch-container {
+  text-align: center;
+}
+
+.switch-label {
+  display: block;
+  margin-bottom: 5px;
+}
+
+.switch-button {
+  padding: 10px 20px;
+  margin-bottom: 5px;
+  border: none;
+  cursor: pointer;
+  border-radius: 5px;
+  transition: background-color 0.3s, color 0.3s;
+}
+
+.switch-button.on {
+  background-color: #4caf50;
+  color: white;
+}
+
+.switch-button.off {
+  background-color: #f44336;
+  color: white;
+}
+
+.status-lamp {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  margin: 5px auto;
+}
+
+.lamp-on {
+  background-color: #4caf50;
+}
+
+.lamp-off {
+  background-color: #f44336;
+}
+
+.disabled {
+  opacity: 0.5;
+  pointer-events: none;
 }
